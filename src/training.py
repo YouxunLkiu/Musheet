@@ -1,5 +1,4 @@
-import preprocess
-import blueprint
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,6 +26,11 @@ import tqdm
 import random
 import re
 import os
+
+from src.preprocess import add_gaussian_noise, audio_segment_between, extract_mel_spectrogram
+from src.preprocess import extract_hcqt_spectrogram, load_progress_index_from_csv, save_progress_index_to_csv
+from src.preprocess import PeekableGenerator, frame_aligning_midi, load_wav_midi_pair
+from src.blueprint import HCQTModel, PianoNoteModel, MultiTaskLoss
 
 ## MODEL Saver
 def save_model(model, optimizer, id, path = "models/"):
@@ -127,7 +131,7 @@ def construct_input_hcqt(spectrogram, x, y, harmonic=3):
         return spectrogram
     else :
         ret = np.zeros((harmonic, x, y))
-        ret [:harmonic, :x, :y] = hcqt[:harmonic, :x, :y]
+        ret [:harmonic, :x, :y] = spectrogram[:harmonic, :x, :y]
         return ret
 
 
@@ -317,36 +321,7 @@ def extract_ratios_from_log_file(id):
     # Convert each ratio to a float for easier processing (optional)
     return [float(ratio) for ratio in ratios]
 
-def extract_fc_from_log_file(id):
-    path = "models/"+ id + "_training_log.txt"
-    # Open the file and read its contents
-    with open(path, 'r') as file:
-        text = file.read()
-    # Regular expression to match "Ratio of pressed is in data is <value>"
-    pattern = r"Frame_accuracy: (\d+\.\d+)"
- 
-    # Find all matching ratios in the text
-    ratios = re.findall(pattern, text)
-    
-    # Convert each ratio to a float for easier processing (optional)
-    return [float(ratio) for ratio in ratios]
 
-def extract_pc_from_log_file(id):
-    path = "models/"+ id + "_training_log.txt"
-    # Open the file and read its contents
-    with open(path, 'r') as file:
-        text = file.read()
-    # Regular expression to match "Ratio of pressed is in data is <value>"
-    pattern = r"pressed_corrected: (\d+\.\d+)"
- 
-    # Find all matching ratios in the text
-    ratios = re.findall(pattern, text)
-    
-    # Convert each ratio to a float for easier processing (optional)
-    return [float(ratio) for ratio in ratios]
-
-def loss(pc, fc):
-    return abs(1-pc) + abs(1-fc)
 
 def train_N_song_on_epoch (id, epoch, N, back_up, lr = 0.001, cache = False, ratio_update = True, ratio_load_prev = True, ratio=1.5, ratio_dummy = 1.51, pc = 0.7928640553348053,
                             fc = 0.5865201712217555, repetition = 2, noised=True, CQT = True, Mel= False):
@@ -423,6 +398,8 @@ def train_N_song_on_epoch (id, epoch, N, back_up, lr = 0.001, cache = False, rat
     save_model(model, optimizer, back_up_id)
     save_training_message_log(back_up_id, training_message)
     print(f"back_up_id {id} + {back_up}")
+
+
 
 def model_roll_back(fromID, BackupID):
     model = PianoNoteModel(output_size=(88, 3))
